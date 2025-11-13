@@ -3,60 +3,75 @@ import numpy as np
 def linear_piecewise_approximation(X, Y, epsilon):
     """
     Uniform ε-approximation of a time series (X, Y)
-    Returns:
-        alphas: list of slopes (partial trends)
-        X_ranges: list of (start_idx, end_idx) tuples
+    following the exact formulas for γ₂ and β₂
+    from Kacprzyk, Wilbik, and Zadrożny (2010).
+    
+    Returns
+    -------
+    angles_deg : list of float
+        Trend angles (degrees) between -90 and 90.
+    X_ranges : list of (start_idx, end_idx)
+        Index ranges of the piecewise-linear segments.
     """
 
     def find_cone(p0, p2, eps):
-        """Compute (γ, β) angles for the cone tangent to ε-circle around p2 from p0."""
-        dx = p2[0] - p0[0]
-        dy = p2[1] - p0[1]
+        """Compute (γ, β) according to the paper’s exact equations."""
+        dx = p0[0] - p2[0]
+        dy = p0[1] - p2[1]
 
-        if abs(dx) < eps:
-            # Avoid division by zero → vertical line
-            return -np.pi/2, np.pi/2
+        denom = dx**2 - eps**2
+        if denom == 0:
+            return -np.pi/2 + 1e-12, np.pi/2 - 1e-12
 
-        term1 = (dx * dy - eps) / (dx**2 - eps**2)
-        term2 = (dx * dy + eps) / (dx**2 - eps**2)
+        inside_sqrt = dx**2 + dy**2 - eps**2
+        if inside_sqrt < 0:
+            # No valid cone intersection possible (eps too large)
+            inside_sqrt = 0.0
 
-        gamma = np.arctan(term1)
-        beta  = np.arctan(term2)
+        root_term = np.sqrt(inside_sqrt)
+
+        num_gamma = dx * dy - eps * root_term
+        num_beta  = dx * dy + eps * root_term
+
+        gamma = np.arctan(num_gamma / denom)
+        beta  = np.arctan(num_beta  / denom)
+
         if gamma > beta:
             gamma, beta = beta, gamma
+
+        # clip to (-90, 90)
+        eps_rad = 1e-12
+        gamma = np.clip(gamma, -np.pi/2 + eps_rad, np.pi/2 - eps_rad)
+        beta  = np.clip(beta,  -np.pi/2 + eps_rad, np.pi/2 - eps_rad)
         return gamma, beta
 
-    alphas = []      # list of slope values (e.g. bisectors)
-    X_ranges = []    # list of index ranges
+    angles_deg = []
+    X_ranges = []
     n = len(X)
-
     i0 = 0
+
     while i0 < n - 1:
         p0 = (X[i0], Y[i0])
         i1 = i0 + 1
-        p2 = (X[i1], Y[i1])
+        alpha_min, alpha_max = find_cone(p0, (X[i1], Y[i1]), epsilon)
 
-        # Initial cone
-        alpha_min, alpha_max = find_cone(p0, p2, epsilon)
-
-        # Extend cone while intersection not empty
+        # extend while intersection non-empty
         while i1 < n:
-            p2 = (X[i1], Y[i1])
-            g2, b2 = find_cone(p0, p2, epsilon)
+            g2, b2 = find_cone(p0, (X[i1], Y[i1]), epsilon)
             new_min, new_max = max(alpha_min, g2), min(alpha_max, b2)
-
-            if new_min <= new_max:  # intersection still valid
+            if new_min <= new_max:
                 alpha_min, alpha_max = new_min, new_max
                 i1 += 1
             else:
-                # intersection empty -> segment ends at previous point
                 break
 
-        # Compute slope as bisector of the final cone
-        slope = np.tan((alpha_min + alpha_max) / 2)
-        alphas.append(slope)
+        # compute bisector angle in degrees
+        angle_rad = 0.5 * (alpha_min + alpha_max)
+        angle_deg = np.degrees(angle_rad)
+        angle_deg = float(np.clip(angle_deg, -90 + 1e-9, 90 - 1e-9))
+
+        angles_deg.append(angle_deg)
         X_ranges.append((i0, i1 - 1))
+        i0 = i1 - 1
 
-        i0 = i1 - 1  # start next cone from last valid point
-
-    return alphas, X_ranges
+    return angles_deg, X_ranges

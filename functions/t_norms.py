@@ -1,22 +1,11 @@
-
-
 def t_norms(norm_type):
     if norm_type == "min":
-        def t_norm(a, b):
-            return min(a, b)
+        return lambda a, b: min(a, b)
     elif norm_type == "prod":
-        def t_norm(a, b):
-            return a * b
+        return lambda a, b: a * b
     elif norm_type == "lukasiewicz":
-        def t_norm(a, b):
-            return max(0, a + b - 1)
+        return lambda a, b: max(0, a + b - 1)
     elif norm_type == "drastic":
-        def t_norm(a, b):
-            if a == 1:
-                return b
-            elif b == 1:
-                return a
-            else:
-                return 0
+        return lambda a, b: b if a == 1 else a if b == 1 else 0
     else:
         raise ValueError(f"Unknown t-norm type: {norm_type}")
